@@ -5,7 +5,7 @@ app = FastAPI()
 
 @app.get("/resources")
 def get_system_resources():
-    cpu = psutil.cpu_percent(interval=1, precpu=True)
+    cpu = psutil.cpu_percent(interval=1, percpu=True)
     ram = psutil.virtual_memory().percent
     disk = psutil.disk_usage('/').percent
     net = psutil.net_io_counters()
