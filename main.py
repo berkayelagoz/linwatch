@@ -90,7 +90,7 @@ def get_resources():
             continue
 
     top_cpu = sorted(processes, key=lambda p: p['cpu_percent'], reverse=True)[:20]
-    top_memory = sorted(processes, key=lambda p: p['memory_mb'], reverse=True)[:20]
+    top_memory = sorted(processes, key=lambda p: p['memory'], reverse=True)[:20]
 
     return {
         "cpu": {
