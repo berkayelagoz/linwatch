@@ -3,17 +3,21 @@ import psutil
 
 app = FastAPI()
 
-def format_bytes(size_bytes):
-    tb = 1024 ** 4
-    gb = 1024 ** 3
-    mb = 1024 ** 2
-
-    if size_bytes >= tb:
-        return f"{round(size_bytes / tb, 2)} TB"
-    elif size_bytes >= gb:
-        return f"{round(size_bytes / gb, 2)} GB"
-    else:
-        return f"{round(size_bytes / mb, 2)} MB"
+def format_bytes(n):
+    # http://code.activestate.com/recipes/578019
+    # >>> bytes2human(10000)
+    # '9.8K'
+    # >>> bytes2human(100001221)
+    # '95.4M'
+    symbols = ('K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
+    prefix = {}
+    for i, s in enumerate(symbols):
+        prefix[s] = 1 << (i + 1) * 10
+    for s in reversed(symbols):
+        if abs(n) >= prefix[s]:
+            value = float(n) / prefix[s]
+            return '%.1f%s' % (value, s)
+    return "%sB" % n
 
 @app.get("/resources")
 def get_resources():
