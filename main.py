@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import subprocess
+import os
 import psutil
 
 app = FastAPI()
@@ -116,3 +119,46 @@ def get_resources():
         "top_cpu_processes": top_cpu,
         "top_memory_processes": top_memory
     }
+
+class LogRequest(BaseModel):
+    app_name: str
+    app_type: str  # "systemd", "docker", "custom"
+
+@app.post("/logs")
+def get_logs(req: LogRequest):
+    app_name = req.app_name
+    app_type = req.app_type.lower()
+    lines = []
+
+    try:
+        if app_type == "systemd":
+            cmd = ["journalctl", "-u", f"{app_name}.service", "-n", "50", "--no-pager"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            lines = result.stdout.strip().split("\n")
+
+        elif app_type == "docker":
+            cmd = ["docker", "logs", "--tail", "50", app_name]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            lines = result.stdout.strip().split("\n")
+
+        elif app_type == "custom":
+            log_path = f"/var/log/{app_name}.log"
+            if not os.path.isfile(log_path):
+                raise HTTPException(status_code=404, detail="Log dosyası bulunamadı.")
+            with open(log_path, "r") as f:
+                all_lines = f.readlines()
+                lines = all_lines[-50:]
+
+        else:
+            raise HTTPException(status_code=400, detail="Geçersiz uygulama türü (systemd, docker, custom)")
+
+        return {
+            "app": app_name,
+            "type": app_type,
+            "lines": [line.strip() for line in lines if line.strip()]
+        }
+
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Komut çalıştırılamadı: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hata: {str(e)}")
