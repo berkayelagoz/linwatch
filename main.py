@@ -79,12 +79,11 @@ def get_resources():
     processes = []
     for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info', 'cpu_percent']):
         try:
-            mem_mb = round(proc.info['memory_info'].rss / (1024 ** 2), 2)
             processes.append({
                 "pid": proc.info['pid'],
                 "name": proc.info['name'],
                 "user": proc.info['username'],
-                "memory_mb": mem_mb,
+                "memory_mb": format_bytes(proc.info['memory_info'].rss),
                 "cpu_percent": proc.info['cpu_percent']
             })
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
