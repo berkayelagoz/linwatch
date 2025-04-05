@@ -18,7 +18,8 @@ def format_bytes(size_bytes):
 @app.get("/resources")
 def get_resources():
     # CPU
-    cpu_percent = psutil.cpu_percent(interval=1, percpu=True)
+    cpu_percent = psutil.cpu_percent(interval=None)
+    per_cpu_percent = psutil.cpu_percent(interval=None, percpu=True)
     load_avg = psutil.getloadavg()
     
     # RAM
@@ -95,7 +96,8 @@ def get_resources():
 
     return {
         "cpu": {
-            "percpu_percent": cpu_percent,
+            "percent": cpu_percent,
+            "percpu_percent": per_cpu_percent,
             "load_avg": {
                 "1min": load_avg[0],
                 "5min": load_avg[1],
