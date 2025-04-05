@@ -59,7 +59,7 @@ def get_resources():
     # Network
     net = psutil.net_io_counters()
     net_data = {
-        "total_download_tb": round(net.bytes_recv / (1024**4), 2),
+        "total_download_tb": format_bytes(net.bytes_recv),
         "total_upload_tb": round(net.bytes_sent / (1024**4), 2),
         "bytes_recv": net.bytes_recv,
         "bytes_sent": net.bytes_sent
