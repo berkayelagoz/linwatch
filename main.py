@@ -66,7 +66,7 @@ def get_resources():
     }
 
     # Temperature
-    temp_data = {}
+    temp_data = {"unit": "°C"}
     try:
         temps = psutil.sensors_temperatures()
         if "coretemp" in temps:
@@ -74,7 +74,7 @@ def get_resources():
                 label = t.label or "core"
                 temp_data[label] = t.current
     except Exception:
-        temp_data = {}
+        temp_data = {"unit": "°C"}
 
     # Processes
     processes = []
