@@ -15,14 +15,6 @@ def format_bytes(size_bytes):
     else:
         return f"{round(size_bytes / mb, 2)} MB"
 
-def format_disk_size(bytes_size):
-    tb = 1024 ** 4
-    gb = 1024 ** 3
-    if bytes_size >= tb:
-        return f"{round(bytes_size / tb, 2)} TB"
-    else:
-        return f"{round(bytes_size / gb, 2)} GB"
-
 @app.get("/resources")
 def get_resources():
     # CPU
@@ -55,9 +47,9 @@ def get_resources():
             usage = psutil.disk_usage(part.mountpoint)
             disks.append({
                 "mount": part.mountpoint,
-                "total": format_disk_size(usage.total),
-                "used": format_disk_size(usage.used),
-                "free": format_disk_size(usage.free),
+                "total": format_bytes(usage.total),
+                "used": format_bytes(usage.used),
+                "free": format_bytes(usage.free),
                 "percent": usage.percent
             })
         except PermissionError:
