@@ -84,13 +84,14 @@ def get_resources():
                 "name": proc.info['name'],
                 "user": proc.info['username'],
                 "memory": format_bytes(proc.info['memory_info'].rss),
+                "memory_raw": proc.info['memory_info'].rss,
                 "cpu_percent": proc.info['cpu_percent']
             })
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
 
     top_cpu = sorted(processes, key=lambda p: p['cpu_percent'], reverse=True)[:20]
-    top_memory = sorted(processes, key=lambda p: proc.info['memory_info'].rss, reverse=True)[:20]
+    top_memory = sorted(processes, key=lambda p: p['memory_raw'], reverse=True)[:20]
 
     return {
         "cpu": {
