@@ -83,7 +83,7 @@ def get_resources():
                 "pid": proc.info['pid'],
                 "name": proc.info['name'],
                 "user": proc.info['username'],
-                "memory_mb": format_bytes(proc.info['memory_info'].rss),
+                "memory": format_bytes(proc.info['memory_info'].rss),
                 "cpu_percent": proc.info['cpu_percent']
             })
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
