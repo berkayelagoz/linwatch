@@ -3,8 +3,19 @@ from pydantic import BaseModel
 import subprocess
 import os
 import psutil
+import uvicorn
+import time
 
 app = FastAPI()
+
+# --- Önbellek için global değişkenler ---
+cached_processes_data = None # Önbelleğe alınmış işlem verilerini tutacak
+last_cache_time = 0          # Önbelleğin en son ne zaman güncellendiğini tutacak
+CACHE_TTL_SECONDS = 5        # Önbelleğin geçerlilik süresi (saniye cinsinden). 5 saniye iyi bir başlangıç olabilir.
+
+cached_processes_data = None # Önbelleğe alınmış işlem verilerini tutacak
+last_cache_time = 0          # Önbelleğin en son ne zaman güncellendiğini tutacak
+CACHE_TTL_SECONDS = 5        # Önbelleğin geçerlilik süresi (saniye cinsinden). 5 saniye iyi bir başlangıç olabilir.
 
 def format_bytes(n):
     # http://code.activestate.com/recipes/578019
@@ -24,6 +35,11 @@ def format_bytes(n):
 
 @app.get("/resources")
 def get_resources():
+
+    global cached_processes_data, last_cache_time # Global değişkenleri kullanacağımızı belirtiyoruz
+
+    current_time = time.time()
+
     # CPU
     cpu_percent = psutil.cpu_percent(interval=None)
     per_cpu_percent = psutil.cpu_percent(interval=None, percpu=True)
@@ -84,22 +100,45 @@ def get_resources():
         temp_data = {"unit": "°C"}
 
     # Processes
-    processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info', 'cpu_percent']):
-        try:
-            processes.append({
-                "pid": proc.info['pid'],
-                "name": proc.info['name'],
-                "user": proc.info['username'],
-                "memory": format_bytes(proc.info['memory_info'].rss),
-                "memory_raw": proc.info['memory_info'].rss,
-                "cpu_percent": proc.info['cpu_percent']
-            })
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
+    # Önbelleği kontrol et
+    if cached_processes_data and (current_time - last_cache_time < CACHE_TTL_SECONDS):
+        print("Process list cache HIT") # Konsolda görmek için (opsiyonel)
+        top_cpu = cached_processes_data['top_cpu']
+        top_memory = cached_processes_data['top_memory']
+    else:
+        print("Process list cache MISS or EXPIRED - Recalculating...") # Konsolda görmek için (opsiyonel)
+        processes = []
+        # interval=0.1 ile CPU yüzdesini almak daha anlamlı olabilir, ama iterasyon yavaşlar.
+        # Interval olmadan almak daha hızlıdır ama ilk çağrıda %0 verebilir. Burada interval'siz devam edelim.
+        for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info', 'cpu_percent']):
+            try:
+                # process_iter CPU yüzdesini hesaplarken de interval kullanabilir.
+                # Eğer yukarıdaki cpu_percent çağrılarında interval varsa, buradaki cpu_percent
+                # biraz daha eski olabilir. Genelde bu fark ihmal edilebilir.
+                proc_info = proc.info
+                processes.append({
+                    "pid": proc_info['pid'],
+                    "name": proc_info['name'],
+                    "user": proc_info['username'],
+                    "memory": format_bytes(proc_info['memory_info'].rss) if proc_info.get('memory_info') else 'N/A',
+                    "memory_raw": proc_info['memory_info'].rss if proc_info.get('memory_info') else 0,
+                    "cpu_percent": proc_info['cpu_percent'] if proc_info.get('cpu_percent') is not None else 0.0
+                })
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            except Exception as e: # Diğer olası hataları yakala
+                print(f"Could not get info for process {proc.pid if hasattr(proc, 'pid') else 'N/A'}: {e}")
+                continue
 
-    top_cpu = sorted(processes, key=lambda p: p['cpu_percent'], reverse=True)[:20]
-    top_memory = sorted(processes, key=lambda p: p['memory_raw'], reverse=True)[:20]
+        # Sıralama
+        # Bellek bilgisi olmayanları filtrele veya sona at (isteğe bağlı)
+        top_cpu = sorted(processes, key=lambda p: p.get('cpu_percent', 0), reverse=True)[:20]
+        top_memory = sorted(processes, key=lambda p: p.get('memory_raw', 0), reverse=True)[:20]
+
+        # Önbelleği güncelle
+        cached_processes_data = {'top_cpu': top_cpu, 'top_memory': top_memory}
+        last_cache_time = current_time
+
 
     return {
         "cpu": {
