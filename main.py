@@ -1,23 +1,32 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends, Header
-from typing import List, Dict, Any, Optional
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
-import subprocess
-import os
+from typing import List, Dict, Any
 import psutil
-import uvicorn
+import os
 import time
 import json
+import asyncio
+import uvicorn
 from datetime import datetime, timezone
 
 app = FastAPI()
 
-# --- Güvenlik Ayarı ---
-INTERNAL_SECRET_TOKEN = "BURAYA_COK_GIZLI_BIR_TOKEN_YAZIN"
-
-# --- Global Değişkenler ---
+# --- Güvenlik ve İzleme Yapıları ---
 active_connections: set[WebSocket] = set()
 current_active_alerts: Dict[str, Dict[str, Any]] = {}
-CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), "monitored_config.json")
+monitored_apps: List[str] = []
+last_states = {
+    "cpu": None,
+    "ram": None,
+    "disk": None,
+    "apps": {}
+}
+THRESHOLDS = {
+    "cpu_percent": 90,
+    "ram_percent": 90,
+    "disk_percent": 90
+}
 
 cached_processes_data = None
 last_cache_time = 0
@@ -35,28 +44,10 @@ def format_bytes(n):
             return '%.1f%s' % (value, s)
     return "%sB" % n
 
-def load_monitoring_config() -> Dict[str, List[str]]:
-    try:
-        if os.path.exists(CONFIG_FILE_PATH):
-            with open(CONFIG_FILE_PATH, "r") as f:
-                return json.load(f)
-        else:
-            return {"monitored_apps": [], "disabled_apps": []}
-    except:
-        return {"monitored_apps": [], "disabled_apps": []}
-
-def save_monitoring_config(config_data: Dict[str, List[str]]) -> bool:
-    try:
-        with open(CONFIG_FILE_PATH, "w") as f:
-            json.dump(config_data, f, indent=4)
-        return True
-    except:
-        return False
-
 async def send_json_to_websocket(websocket: WebSocket, data: dict):
     try:
         await websocket.send_json(data)
-    except:
+    except Exception:
         active_connections.discard(websocket)
 
 async def broadcast_message(data: dict):
@@ -64,15 +55,10 @@ async def broadcast_message(data: dict):
     for connection in active_connections:
         try:
             await connection.send_json(data)
-        except:
+        except Exception:
             disconnected_clients.add(connection)
     for client in disconnected_clients:
         active_connections.discard(client)
-
-async def verify_internal_token(x_internal_token: Optional[str] = Header(None)):
-    if x_internal_token != INTERNAL_SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="Geçersiz veya eksik internal token")
-    return True
 
 # --- WebSocket ---
 @app.websocket("/ws/notifications")
@@ -80,7 +66,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.add(websocket)
 
-    # Mevcut alarmlar
     active_alerts_list = []
     for server_alerts in current_active_alerts.values():
         active_alerts_list.extend(list(server_alerts.values()))
@@ -91,90 +76,106 @@ async def websocket_endpoint(websocket: WebSocket):
             "data": active_alerts_list
         })
 
-    # Mevcut konfigürasyon
-    current_config = load_monitoring_config()
     await send_json_to_websocket(websocket, {
         "type": "current_config",
-        "data": current_config
+        "data": {"monitored_apps": monitored_apps}
     })
 
     try:
         while True:
             msg = await websocket.receive_text()
-            print(f"📩 WebSocket mesajı alındı ({websocket.client}): {msg[:100]}...")
             try:
                 data = json.loads(msg)
                 msg_type = data.get("type")
-                current_config = load_monitoring_config()
 
                 if msg_type == "config_add":
-                    app_to_add = data.get("data", {}).get("app")
-                    if app_to_add and app_to_add not in current_config["monitored_apps"]:
-                        current_config["monitored_apps"].append(app_to_add)
-                        if save_monitoring_config(current_config):
-                            await send_json_to_websocket(websocket, {
-                                "type": "config_ack",
-                                "success": True,
-                                "message": f"'{app_to_add}' başarıyla eklendi."
-                            })
-                    else:
+                    app_name = data.get("data", {}).get("app")
+                    if app_name and app_name not in monitored_apps:
+                        monitored_apps.append(app_name)
                         await send_json_to_websocket(websocket, {
                             "type": "config_ack",
-                            "success": False,
-                            "message": "Uygulama zaten mevcut veya geçersiz."
+                            "success": True,
+                            "message": f"{app_name} eklendi"
                         })
 
                 elif msg_type == "config_remove":
-                    app_to_remove = data.get("data", {}).get("app")
-                    if app_to_remove in current_config["monitored_apps"]:
-                        current_config["monitored_apps"].remove(app_to_remove)
-                        if save_monitoring_config(current_config):
-                            await send_json_to_websocket(websocket, {
-                                "type": "config_ack",
-                                "success": True,
-                                "message": f"'{app_to_remove}' başarıyla kaldırıldı."
-                            })
-                    else:
+                    app_name = data.get("data", {}).get("app")
+                    if app_name in monitored_apps:
+                        monitored_apps.remove(app_name)
                         await send_json_to_websocket(websocket, {
                             "type": "config_ack",
-                            "success": False,
-                            "message": "Uygulama listede bulunamadı."
+                            "success": True,
+                            "message": f"{app_name} kaldırıldı"
                         })
-
-                else:
-                    await send_json_to_websocket(websocket, {
-                        "type": "config_ack",
-                        "success": False,
-                        "message": "Geçersiz mesaj türü."
-                    })
-
             except json.JSONDecodeError:
-                print(f"⚠️ Geçersiz JSON alındı ({websocket.client}): {msg[:100]}...")
                 continue
-            except Exception as e:
-                print(f"💥 WebSocket mesaj işleme hatası ({websocket.client}): {e}")
-                await send_json_to_websocket(websocket, {"type": "error", "message": "İşlem sırasında hata oluştu."})
-
     except WebSocketDisconnect:
-        print(f"❌ WebSocket bağlantısı koptu: {websocket.client}")
+        pass
     finally:
         active_connections.discard(websocket)
-        print(f"🔌 WebSocket bağlantısı kapatıldı: {websocket.client}")
 
-# --- Alert Endpoint ---
-@app.post("/internal/broadcast_alert", dependencies=[Depends(verify_internal_token)])
-async def broadcast_alert_internal(alert_data: dict):
-    server_name = alert_data.get("server_name")
-    alert_type = alert_data.get("alert_type")
-    status = alert_data.get("status", "ALERT")
+# --- Monitoring ---
+async def monitoring_loop():
+    while True:
+        await check_system_resources()
+        await check_apps()
+        await asyncio.sleep(30)
 
-    if not server_name or not alert_type:
-        raise HTTPException(status_code=400, detail="Eksik bilgi")
+async def check_system_resources():
+    cpu_percent = psutil.cpu_percent(interval=1)
+    if cpu_percent > THRESHOLDS["cpu_percent"]:
+        if last_states["cpu"] != "ALERT":
+            await send_alert("CPU", "ALERT", "cpu_percent", cpu_percent, THRESHOLDS["cpu_percent"], "CPU yüksek")
+            last_states["cpu"] = "ALERT"
+    elif last_states["cpu"] == "ALERT" and cpu_percent < THRESHOLDS["cpu_percent"] - 5:
+        await send_alert("CPU", "RECOVERY", "cpu_percent", cpu_percent, THRESHOLDS["cpu_percent"], "CPU normale döndü")
+        last_states["cpu"] = "RECOVERY"
+
+    ram = psutil.virtual_memory()
+    if ram.percent > THRESHOLDS["ram_percent"]:
+        if last_states["ram"] != "ALERT":
+            await send_alert("RAM", "ALERT", "ram_percent", ram.percent, THRESHOLDS["ram_percent"], "RAM yüksek")
+            last_states["ram"] = "ALERT"
+    elif last_states["ram"] == "ALERT" and ram.percent < THRESHOLDS["ram_percent"] - 5:
+        await send_alert("RAM", "RECOVERY", "ram_percent", ram.percent, THRESHOLDS["ram_percent"], "RAM normale döndü")
+        last_states["ram"] = "RECOVERY"
+
+    disk = psutil.disk_usage('/')
+    if disk.percent > THRESHOLDS["disk_percent"]:
+        if last_states["disk"] != "ALERT":
+            await send_alert("DISK", "ALERT", "disk_percent", disk.percent, THRESHOLDS["disk_percent"], "Disk yüksek")
+            last_states["disk"] = "ALERT"
+    elif last_states["disk"] == "ALERT" and disk.percent < THRESHOLDS["disk_percent"] - 5:
+        await send_alert("DISK", "RECOVERY", "disk_percent", disk.percent, THRESHOLDS["disk_percent"], "Disk normale döndü")
+        last_states["disk"] = "RECOVERY"
+
+async def check_apps():
+    current_apps = {p.info['name']: p.info['pid'] for p in psutil.process_iter(['name', 'pid'])}
+    for app in monitored_apps:
+        is_running = any(app in name for name in current_apps)
+        if is_running and last_states["apps"].get(app) == "DOWN":
+            await send_alert(f"APP_{app}", "RECOVERY", message=f"{app} tekrar çalışıyor")
+            last_states["apps"][app] = "UP"
+        elif not is_running and last_states["apps"].get(app) != "DOWN":
+            await send_alert(f"APP_{app}", "ALERT", message=f"{app} çalışmıyor")
+            last_states["apps"][app] = "DOWN"
+
+async def send_alert(alert_type, status, metric=None, value=None, threshold=None, message=None):
+    alert_data = {
+        "server_name": os.uname().nodename,
+        "alert_type": alert_type,
+        "status": status,
+        "metric": metric,
+        "value": value,
+        "threshold": threshold,
+        "message": message or "",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    server_name = alert_data["server_name"]
 
     if status == "ALERT":
         if server_name not in current_active_alerts:
             current_active_alerts[server_name] = {}
-        alert_data["received_timestamp"] = datetime.now(timezone.utc).isoformat()
         current_active_alerts[server_name][alert_type] = alert_data
     elif status == "RECOVERY":
         if server_name in current_active_alerts and alert_type in current_active_alerts[server_name]:
@@ -183,7 +184,6 @@ async def broadcast_alert_internal(alert_data: dict):
                 del current_active_alerts[server_name]
 
     await broadcast_message({"type": "realtime_alert", "data": alert_data})
-    return {"status": "ok", "message": "Alert işlendi"}
 
 # --- Resources Endpoint ---
 @app.get("/resources")
@@ -326,7 +326,11 @@ def get_logs(req: LogRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hata: {str(e)}")
 
+
+# --- Startup ---
+@app.on_event("startup")
+async def start_monitoring():
+    asyncio.create_task(monitoring_loop())
+
 if __name__ == "__main__":
-    if not os.path.exists(CONFIG_FILE_PATH):
-        save_monitoring_config({"monitored_apps": [], "disabled_apps": []})
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
