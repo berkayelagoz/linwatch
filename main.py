@@ -211,18 +211,18 @@ def get_resources():
         "percent": swap.percent
     } if swap.total > 0 else None
 
-disks = []
-try:
-    usage = psutil.disk_usage('/')
-    disks.append({
-        "mount": "/",
-        "total": format_bytes(usage.total),
-        "used": format_bytes(usage.used),
-        "free": format_bytes(usage.free),
-        "percent": usage.percent
-    })
-except Exception as e:
-    print(f"Disk bilgisi alınamadı: {e}")
+    disks = []
+    try:
+        usage = psutil.disk_usage('/')
+        disks.append({
+            "mount": "/",
+            "total": format_bytes(usage.total),
+            "used": format_bytes(usage.used),
+            "free": format_bytes(usage.free),
+            "percent": usage.percent
+        })
+    except Exception as e:
+        print(f"Disk bilgisi alınamadı: {e}")
 
     net = psutil.net_io_counters()
     net_data = {
