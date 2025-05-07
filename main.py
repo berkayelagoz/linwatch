@@ -233,15 +233,15 @@ def get_resources():
         "bytes_sent": net.bytes_sent
     }
 
-    temp_data = {"unit": "°C"}
     try:
         temps = psutil.sensors_temperatures()
         if "coretemp" in temps:
             for t in temps["coretemp"]:
-                label = t.label or "core"
-                temp_data[label] = t.current
+                current_temp = t.current  # sadece ilk bulunan sıcaklığı al
+                break
+            current_temp = None
     except:
-        temp_data = {"unit": "°C"}
+        current_temp = None
 
     if cached_processes_data and (current_time - last_cache_time < CACHE_TTL_SECONDS):
         top_cpu = cached_processes_data['top_cpu']
