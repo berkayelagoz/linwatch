@@ -17,16 +17,19 @@ app = FastAPI()
 active_connections: set[WebSocket] = set()
 current_active_alerts: Dict[str, Dict[str, Any]] = {}
 monitored_apps: List[str] = []
+alert_history: List[Dict[str, Any]] = []
 last_states = {
     "cpu": None,
     "ram": None,
     "disk": None,
+    "temperature": None,
     "apps": {}
 }
 THRESHOLDS = {
     "cpu_percent": 90,
     "ram_percent": 90,
-    "disk_percent": 90
+    "disk_percent": 90,
+    "temperature": 85
 }
 
 cached_processes_data = None
@@ -108,6 +111,17 @@ async def websocket_endpoint(websocket: WebSocket):
                             "success": True,
                             "message": f"{app_name} kaldırıldı"
                         })
+                elif msg_type == "get_history":
+                    await send_json_to_websocket(websocket, {
+                        "type": "alert_history",
+                        "data": alert_history
+                    })  
+                elif msg_type == "clear_history":
+                    alert_history.clear()
+                    await send_json_to_websocket(websocket, {
+                        "type": "clear_ack",
+                        "message": "Alarm geçmişi temizlendi"
+                    })          
             except json.JSONDecodeError:
                 continue
     except WebSocketDisconnect:
@@ -149,6 +163,20 @@ async def check_system_resources():
     elif last_states["disk"] == "ALERT" and disk.percent < THRESHOLDS["disk_percent"] - 5:
         await send_alert("DISK", "RECOVERY", "disk_percent", disk.percent, THRESHOLDS["disk_percent"], "Disk normale döndü")
         last_states["disk"] = "RECOVERY"
+    
+    try:
+        temps = psutil.sensors_temperatures()
+        if "coretemp" in temps and temps["coretemp"]:
+            temp = temps["coretemp"][0].current
+            if temp > THRESHOLDS["temperature"]:
+                if last_states.get("temperature") != "ALERT":
+                    await send_alert("TEMPERATURE", "ALERT", "temperature", temp, THRESHOLDS["temperature"], "Sıcaklık yüksek")
+                    last_states["temperature"] = "ALERT"
+            elif last_states.get("temperature") == "ALERT" and temp < THRESHOLDS["temperature"] - 5:
+                await send_alert("TEMPERATURE", "RECOVERY", "temperature", temp, THRESHOLDS["temperature"], "Sıcaklık normale döndü")
+                last_states["temperature"] = "RECOVERY"
+    except Exception as e:
+        print(f"No temperature data: {e}")
 
 async def check_apps():
     current_apps = {p.info['name']: p.info['pid'] for p in psutil.process_iter(['name', 'pid'])}
@@ -183,6 +211,10 @@ async def send_alert(alert_type, status, metric=None, value=None, threshold=None
             del current_active_alerts[server_name][alert_type]
             if not current_active_alerts[server_name]:
                 del current_active_alerts[server_name]
+    
+    if status in ["ALERT", "RECOVERY"]:
+       alert_history.append(alert_data)
+
 
     await broadcast_message({"type": "realtime_alert", "data": alert_data})
 
