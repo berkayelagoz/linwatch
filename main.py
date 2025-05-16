@@ -101,6 +101,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             "success": True,
                             "message": f"{app_name} eklendi"
                         })
+                    for conn in active_connections:
+                        await send_json_to_websocket(conn, {
+                            "type": "current_config",
+                            "data": {"monitored_apps": monitored_apps}
+                        })
 
                 elif msg_type == "config_remove":
                     app_name = data.get("data", {}).get("app")
@@ -111,6 +116,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             "success": True,
                             "message": f"{app_name} kaldırıldı"
                         })
+                        for conn in active_connections:
+                            await send_json_to_websocket(conn, {
+                            "type": "current_config",
+                            "data": {"monitored_apps": monitored_apps}
+                            })
                 elif msg_type == "get_history":
                     await send_json_to_websocket(websocket, {
                         "type": "alert_history",
