@@ -348,8 +348,7 @@ def get_logs(req: LogRequest):
             lines = result.stdout.strip().split("\n")
         elif app_type == "custom":
             log_path = f"/var/log/{app_name}.log"
-            if not os.path.isfile(log_path):
-                raise HTTPException(status_code=404, detail="Log dosyası bulunamadı.")
+            cmd = ["tail", "-n", "50", log_path]
             with open(log_path, "r") as f:
                 all_lines = f.readlines()
                 lines = all_lines[-50:]
