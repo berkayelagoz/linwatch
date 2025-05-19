@@ -349,9 +349,8 @@ def get_logs(req: LogRequest):
         elif app_type == "custom":
             log_path = f"/var/log/{app_name}"
             cmd = ["tail", "-n", "50", log_path]
-            with open(log_path, "r") as f:
-                all_lines = f.readlines()
-                lines = all_lines[-50:]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            lines = result.stdout.strip().split("\n")
         else:
             raise HTTPException(status_code=400, detail="Geçersiz uygulama türü")
 
