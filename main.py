@@ -26,7 +26,7 @@ last_states = {
     "apps": {}
 }
 THRESHOLDS = {
-    "cpu_percent": 2,
+    "cpu_percent": 3,
     "ram_percent": 20,
     "disk_percent": 5,
     "temperature": 85
