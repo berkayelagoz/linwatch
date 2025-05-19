@@ -152,7 +152,7 @@ async def check_system_resources():
         if last_states["cpu"] != "ALERT":
             await send_alert("CPU", "ALERT", "cpu_percent", cpu_percent, THRESHOLDS["cpu_percent"], "CPU yüksek")
             last_states["cpu"] = "ALERT"
-    elif last_states["cpu"] == "ALERT" and cpu_percent < THRESHOLDS["cpu_percent"] - 5:
+    elif last_states["cpu"] == "ALERT" and cpu_percent < THRESHOLDS["cpu_percent"]:
         await send_alert("CPU", "RECOVERY", "cpu_percent", cpu_percent, THRESHOLDS["cpu_percent"], "CPU normale döndü")
         last_states["cpu"] = "RECOVERY"
 
@@ -214,7 +214,7 @@ async def send_alert(alert_type, status, metric=None, value=None, threshold=None
 
     alert_history.append(alert_data)
 
-    # Aktif alarm listesini güncelle (ayrıca)
+    # Aktif alarm listesini güncelle
     if status == "ALERT":
         if server_name not in current_active_alerts:
             current_active_alerts[server_name] = {}
