@@ -26,7 +26,7 @@ last_states = {
     "apps": {}
 }
 THRESHOLDS = {
-    "cpu_percent": 3,
+    "cpu_percent": 2,
     "ram_percent": 20,
     "disk_percent": 5,
     "temperature": 85
@@ -144,7 +144,7 @@ async def monitoring_loop():
     while True:
         await check_system_resources()
         await check_apps()
-        await asyncio.sleep(30)
+        await asyncio.sleep(2)
 
 async def check_system_resources():
     cpu_percent = psutil.cpu_percent(interval=1)
