@@ -212,9 +212,7 @@ async def send_alert(alert_type, status, metric=None, value=None, threshold=None
     }
     server_name = alert_data["server_name"]
 
-    # Her türlü geçmişe ekle (önce)
-    if status in ["ALERT", "RECOVERY"]:
-        alert_history.append(alert_data)
+    alert_history.append(alert_data)
 
     # Aktif alarm listesini güncelle (ayrıca)
     if status == "ALERT":
