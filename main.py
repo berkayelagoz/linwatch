@@ -212,6 +212,11 @@ async def send_alert(alert_type, status, metric=None, value=None, threshold=None
     }
     server_name = alert_data["server_name"]
 
+    # Her türlü geçmişe ekle (önce)
+    if status in ["ALERT", "RECOVERY"]:
+        alert_history.append(alert_data)
+
+    # Aktif alarm listesini güncelle (ayrıca)
     if status == "ALERT":
         if server_name not in current_active_alerts:
             current_active_alerts[server_name] = {}
@@ -221,10 +226,6 @@ async def send_alert(alert_type, status, metric=None, value=None, threshold=None
             del current_active_alerts[server_name][alert_type]
             if not current_active_alerts[server_name]:
                 del current_active_alerts[server_name]
-    
-    if status in ["ALERT", "RECOVERY"]:
-       alert_history.append(alert_data)
-
 
     await broadcast_message({"type": "realtime_alert", "data": alert_data})
 
