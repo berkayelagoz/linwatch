@@ -11,6 +11,13 @@ import asyncio
 import uvicorn
 from datetime import datetime, timezone
 
+with open("config.json") as f:
+    config = json.load(f)
+
+# --- Konfigürasyon ---
+thresholds = config["thresholds"]
+loop_interval = config["monitoring"]["loop_interval_seconds"]
+
 app = FastAPI()
 
 # --- Güvenlik ve İzleme Yapıları ---
@@ -24,12 +31,6 @@ last_states = {
     "disk": None,
     "temperature": None,
     "apps": {}
-}
-THRESHOLDS = {
-    "cpu_percent": 2,
-    "ram_percent": 20,
-    "disk_percent": 5,
-    "temperature": 85
 }
 
 cached_processes_data = None
@@ -144,46 +145,46 @@ async def monitoring_loop():
     while True:
         await check_system_resources()
         await check_apps()
-        await asyncio.sleep(2)
+        await asyncio.sleep(loop_interval)
 
 async def check_system_resources():
     cpu_percent = psutil.cpu_percent(interval=1)
-    if cpu_percent > THRESHOLDS["cpu_percent"]:
+    if cpu_percent > thresholds["cpu_percent"]:
         if last_states["cpu"] != "ALERT":
-            await send_alert("CPU", "ALERT", "cpu_percent", cpu_percent, THRESHOLDS["cpu_percent"], "CPU yüksek")
+            await send_alert("CPU", "ALERT", "cpu_percent", cpu_percent, thresholds["cpu_percent"], "CPU yüksek")
             last_states["cpu"] = "ALERT"
-    elif last_states["cpu"] == "ALERT" and cpu_percent < THRESHOLDS["cpu_percent"]:
-        await send_alert("CPU", "RECOVERY", "cpu_percent", cpu_percent, THRESHOLDS["cpu_percent"], "CPU normale döndü")
+    elif last_states["cpu"] == "ALERT" and cpu_percent < thresholds["cpu_percent"]:
+        await send_alert("CPU", "RECOVERY", "cpu_percent", cpu_percent, thresholds["cpu_percent"], "CPU normale döndü")
         last_states["cpu"] = "RECOVERY"
 
     ram = psutil.virtual_memory()
-    if ram.percent > THRESHOLDS["ram_percent"]:
+    if ram.percent > thresholds["ram_percent"]:
         if last_states["ram"] != "ALERT":
-            await send_alert("RAM", "ALERT", "ram_percent", ram.percent, THRESHOLDS["ram_percent"], "RAM yüksek")
+            await send_alert("RAM", "ALERT", "ram_percent", ram.percent, thresholds["ram_percent"], "RAM yüksek")
             last_states["ram"] = "ALERT"
-    elif last_states["ram"] == "ALERT" and ram.percent < THRESHOLDS["ram_percent"] - 5:
-        await send_alert("RAM", "RECOVERY", "ram_percent", ram.percent, THRESHOLDS["ram_percent"], "RAM normale döndü")
+    elif last_states["ram"] == "ALERT" and ram.percent < thresholds["ram_percent"]:
+        await send_alert("RAM", "RECOVERY", "ram_percent", ram.percent, thresholds["ram_percent"], "RAM normale döndü")
         last_states["ram"] = "RECOVERY"
 
     disk = psutil.disk_usage('/')
-    if disk.percent > THRESHOLDS["disk_percent"]:
+    if disk.percent > thresholds["disk_percent"]:
         if last_states["disk"] != "ALERT":
-            await send_alert("DISK", "ALERT", "disk_percent", disk.percent, THRESHOLDS["disk_percent"], "Disk yüksek")
+            await send_alert("DISK", "ALERT", "disk_percent", disk.percent, thresholds["disk_percent"], "Disk yüksek")
             last_states["disk"] = "ALERT"
-    elif last_states["disk"] == "ALERT" and disk.percent < THRESHOLDS["disk_percent"] - 5:
-        await send_alert("DISK", "RECOVERY", "disk_percent", disk.percent, THRESHOLDS["disk_percent"], "Disk normale döndü")
+    elif last_states["disk"] == "ALERT" and disk.percent < thresholds["disk_percent"]:
+        await send_alert("DISK", "RECOVERY", "disk_percent", disk.percent, thresholds["disk_percent"], "Disk normale döndü")
         last_states["disk"] = "RECOVERY"
     
     try:
         temps = psutil.sensors_temperatures()
         if "coretemp" in temps and temps["coretemp"]:
             temp = temps["coretemp"][0].current
-            if temp > THRESHOLDS["temperature"]:
+            if temp > thresholds["temperature"]:
                 if last_states.get("temperature") != "ALERT":
-                    await send_alert("TEMPERATURE", "ALERT", "temperature", temp, THRESHOLDS["temperature"], "Sıcaklık yüksek")
+                    await send_alert("TEMPERATURE", "ALERT", "temperature", temp, thresholds["temperature"], "Sıcaklık yüksek")
                     last_states["temperature"] = "ALERT"
-            elif last_states.get("temperature") == "ALERT" and temp < THRESHOLDS["temperature"] - 5:
-                await send_alert("TEMPERATURE", "RECOVERY", "temperature", temp, THRESHOLDS["temperature"], "Sıcaklık normale döndü")
+            elif last_states.get("temperature") == "ALERT" and temp < thresholds["temperature"]:
+                await send_alert("TEMPERATURE", "RECOVERY", "temperature", temp, thresholds["temperature"], "Sıcaklık normale döndü")
                 last_states["temperature"] = "RECOVERY"
     except Exception as e:
         print(f"No temperature data: {e}")
