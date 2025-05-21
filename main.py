@@ -210,7 +210,7 @@ async def send_alert(alert_type, status, metric=None, value=None, threshold=None
         "value": value,
         "threshold": threshold,
         "message": message or "",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     }
     server_name = alert_data["server_name"]
 
