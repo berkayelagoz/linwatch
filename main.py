@@ -9,6 +9,7 @@ import time
 import json
 import asyncio
 import uvicorn
+import platform
 from datetime import datetime, timezone
 
 with open("config.json") as f:
