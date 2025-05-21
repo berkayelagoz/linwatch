@@ -1,0 +1,12 @@
+{
+  "thresholds": {
+    "cpu_percent": 90,
+    "ram_percent": 90,
+    "disk_percent": 90,
+    "temperature": 90
+  },
+  "monitoring": {
+    "loop_interval_seconds": 5
+  }
+}
+
